@@ -1,127 +1,150 @@
 import re
 from datetime import datetime
 import asyncio
-import shutil
 import os
 import json
 import io
 import base64
+import urllib.request
 from gtts import gTTS
 
-from fastapi import FastAPI, UploadFile, File, Request, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.templating import Jinja2Templates
-import ollama
 import mysql.connector
-from faster_whisper import WhisperModel
 
-from voice_input_procesing import proses_suara
+# Coba muat library SpeechRecognition jika sudah di-install (pip install SpeechRecognition)
+try:
+    import speech_recognition as sr
+    SR_TERSEDIA = True
+except ImportError:
+    SR_TERSEDIA = False
 
-model = WhisperModel("base", device="cpu", compute_type="int8")
-
-app = FastAPI(title="Sistem Triage Darurat 112 API")
+app = FastAPI(title="Sistem Triage Darurat 112 API - Llama 3 Edition")
 templates = Jinja2Templates(directory="templates")
+
+# Nama model Llama 3 di Ollama Anda (bisa "llama3", "llama3.1", atau "llama3.2")
+OLLAMA_MODEL = "llama3"
+OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
 def teks_ke_base64_audio(teks: str) -> str:
-    """Mengubah teks menjadi audio MP3 dalam bentuk format Base64 string."""
-    tts = gTTS(text=teks, lang='id', slow=False)
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    audio_bytes = fp.read()
-    return base64.b64encode(audio_bytes).decode('utf-8')
-
-
-@app.post("/proses-laporan/")
-async def proses_laporan(file: UploadFile = File(...)):
-    file_location = f"temp_audio/temp_{file.filename}"
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    try: 
-        print(f"Memproses file: {file.filename}")
-        teks_hasil_stt = proses_suara(file_location)
-
-        instruction_system = """ 
-        Kamu adalah asisten triage darurat 112.
-        Tugas kamu hanya mengekstrak informasi dari teks laporan ke dalam format JSON yang valid.
-        Gunakan format kunci berikut:
-        - "emergency_type": (Kategorikan ke: Kebakaran, Medis, Kecelakaan, Kriminal, Bencana Alam)
-        - "lokasi": (Ekstrak nama tempat atau daerah yang dibutuhkan)
-        - "skala_bahaya": (Tentukan: Tinggi, Sedang, Rendah)
-        Hanya berikan output JSON mentah, tanpa awalan atau akhiran teks apa pun.
-        """
-
-        response = ollama.chat(
-            model='llama3',
-            format='json',
-            messages=[
-                {'role': 'system', 'content': instruction_system},
-                {'role': 'user', 'content': teks_hasil_stt}, 
-            ]
-        )
-
-        output_json = response['message']['content']
-        data_ai = json.loads(output_json)
-
-        jenis_darurat = data_ai.get("emergency_type")
-        lokasi_kejadian = data_ai.get("lokasi")
-
-        print("\n" + "="*50)
-        print(" # MENGIRIM NOTIFIKASI KE INSTANSI TERKAIT #")
-
-        if jenis_darurat == "Kebakaran":
-            print(f"[TERKIRIM KEDAMKAR] -> Pesan: telah terjadi kebakaran di {lokasi_kejadian}. segera luncurkan armada!")
-        elif jenis_darurat == "Medis":
-            print(f"[TERKIRIM KE RSUD/AMBULANS] -> Pesan: Dibutuhkan penanganan medis darurat di {lokasi_kejadian}.")
-        elif jenis_darurat == "Kriminal":
-            print(f"[TERKIRIM KE POLRESTA] -> Pesan: Tindak kriminal dilaporkan di {lokasi_kejadian}. Mohon segera kirimkan unit patroli.")
-        elif jenis_darurat == "Kecelakaan":
-            print(f"[TERKIRIM KE DISHUB/POLANTAS] -> Pesan: Terjadi kecelakaan lalu lintas di {lokasi_kejadian}.")
-        else:
-            print(f"[TERKIRIM KE TIM SAR/BPBD] -> Pesan: Terdapat laporan insiden ({jenis_darurat}) di {lokasi_kejadian}.")
-
-        print("="*50 + "\n")
-
-        db = mysql.connector.connect(
-            host="localhost", user="root", password="", database="db_darurat_112"
-        )
-        cursor = db.cursor()
-        sql = """ INSERT INTO laporan_darurat (path_file_audio, teks_transkrip, kategori_darurat, lokasi, skala_bahaya) VALUES (%s, %s, %s, %s, %s)"""
-
-        val = (
-            file.filename,
-            teks_hasil_stt,
-            data_ai.get("emergency_type"),
-            data_ai.get("lokasi"),
-            data_ai.get("skala_bahaya")
-        )
-
-        cursor.execute(sql, val)
-        db.commit()
-        id_laporan = cursor.lastrowid
-
-        cursor.close()
-        db.close()
-
-        os.remove(file_location)
-
-        pesan_respon = f"Laporan {jenis_darurat} di {lokasi_kejadian} berhasil diterima."
-        audio_b64 = teks_ke_base64_audio(pesan_respon)
-
-        return {
-            "status": "success",
-            "pesan": "Laporan berhasil diproses dan disimpan.",
-            "id_laporan": id_laporan,
-            "transkrip_asli": teks_hasil_stt,
-            "data_ai": data_ai,
-            "audio_response": audio_b64
-        }
-
+    """Mengubah teks menjadi audio MP3 dalam format Base64 string."""
+    try:
+        tts = gTTS(text=teks, lang='id', slow=False)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return base64.b64encode(fp.read()).decode('utf-8')
     except Exception as e:
-        if os.path.exists(file_location):
-            os.remove(file_location)
-        raise HTTPException(status_code=500, detail=f"Telah terjadi kesalahan internal: {str(e)}")
+        print(f"[WARNING TTS] Gagal membuat MP3 gTTS: {e}")
+        return ""
+
+
+def baca_suara_wav(file_path: str) -> str:
+    """Membaca teks bahasa Indonesia dari file WAV jika transkrip browser kosong."""
+    if not SR_TERSEDIA:
+        print("[WARNING] Library SpeechRecognition belum diinstall (jalankan: pip install SpeechRecognition)")
+        return ""
+    try:
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(file_path) as source:
+            audio_data = recognizer.record(source)
+        teks = recognizer.recognize_google(audio_data, language="id-ID")
+        return teks
+    except Exception as e:
+        print(f"[WARNING STT] Gagal membaca suara dari WAV: {e}")
+        return ""
+
+
+def panggil_llama3_lokal(teks_laporan: str) -> dict:
+    """
+    Mengirim teks laporan ke Llama 3 Lokal (Ollama) untuk diekstrak menjadi JSON.
+    """
+    prompt = f"""Kamu adalah sistem triage darurat 112 Indonesia.
+Analisis kalimat laporan darurat berikut:
+"{teks_laporan}"
+
+Balas HANYA dalam format JSON valid dengan kunci berikut:
+{{
+  "transkrip": "{teks_laporan}",
+  "kategori_darurat": "Pilih satu: Kebakaran / Medis / Kecelakaan / Kriminal / Bencana Alam / Lainnya",
+  "lokasi": "Nama tempat atau jalan yang disebutkan (jika tidak ada tulis Tidak diketahui)",
+  "skala_bahaya": "Pilih satu: Tinggi / Sedang / Rendah"
+}}"""
+
+    # Coba panggil model llama3 / llama3.1 / llama3.2 yang ada di Ollama lokal
+    for model_name in [OLLAMA_MODEL, "llama3.2", "llama3.1", "llama3:latest"]:
+        try:
+            payload = json.dumps({
+                "model": model_name,
+                "prompt": prompt,
+                "format": "json",
+                "stream": False,
+                "options": {"temperature": 0.0}
+            }).encode("utf-8")
+
+            req = urllib.request.Request(
+                OLLAMA_URL,
+                data=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                hasil_ollama = json.loads(resp.read().decode("utf-8"))
+                teks_json = hasil_ollama.get("response", "{}")
+                print(f"[DEBUG] Llama 3 ({model_name}) berhasil merespons!")
+                data = json.loads(teks_json)
+                data["transkrip"] = teks_laporan
+                return data
+        except urllib.error.HTTPError as he:
+            # Jika nama model tidak cocok (404), coba nama berikutnya
+            if he.code == 404:
+                continue
+            print(f"[WARNING OLLAMA] HTTP Error: {he}")
+        except Exception as e:
+            print(f"[WARNING OLLAMA] Gagal menghubungi Ollama di {OLLAMA_URL}: {e}")
+            break
+
+    # Fallback cerdas jika aplikasi Ollama belum dinyalakan
+    teks_lower = teks_laporan.lower()
+    kat = "Lainnya"
+    if any(k in teks_lower for k in ["bakar", "api", "asap", "meledak", "kebakaran"]):
+        kat = "Kebakaran"
+    elif any(k in teks_lower for k in ["pingsan", "sakit", "darah", "jantung", "ambulans", "medis", "luka", "korban"]):
+        kat = "Medis"
+    elif any(k in teks_lower for k in ["tabrak", "kecelakaan", "jatuh", "mobil", "motor", "laka"]):
+        kat = "Kecelakaan"
+    elif any(k in teks_lower for k in ["maling", "rampok", "curian", "begal", "bunuh", "senjata", "pencuri"]):
+        kat = "Kriminal"
+    elif any(k in teks_lower for k in ["banjir", "gempa", "longsor", "pohon tumbang"]):
+        kat = "Bencana Alam"
+
+    match_lok = re.search(
+        r'\b(?:di|ke|jalan|jl|daerah|dekat|pasar|kampus|gedung|desa|kelurahan|kecamatan|simpang)\s+([a-zA-Z0-9\s]{3,35})',
+        teks_laporan,
+        re.IGNORECASE
+    )
+    lok = match_lok.group(1).strip() if match_lok else "Lokasi Pelapor"
+
+    return {
+        "transkrip": teks_laporan,
+        "kategori_darurat": kat,
+        "lokasi": lok,
+        "skala_bahaya": "Tinggi"
+    }
+
+
+def proses_laporan_darurat(file_path: str, transkrip_awal: str = "") -> dict:
+    teks_laporan = transkrip_awal.strip()
+
+    if not teks_laporan:
+        print("[DEBUG] 1. Mengekstrak ucapan dari file WAV...")
+        teks_laporan = baca_suara_wav(file_path)
+
+    if not teks_laporan:
+        teks_laporan = "Laporan darurat suara (suara kurang jelas)"
+
+    print(f"[DEBUG] 2. Teks ucapan: '{teks_laporan}'. Mengirim ke Llama 3 Lokal...")
+    return panggil_llama3_lokal(teks_laporan)
 
 
 @app.get("/dashboard/")
@@ -161,119 +184,89 @@ async def jalur_telepon_darurat(websocket: WebSocket):
     await websocket.accept()
     print("\n[INFO] Saluran telepon darurat DIBUKA.")
     
-    file_sementara = "streaming_sementara.webm"
-    teks_pelapor = ""
+    file_sementara = "streaming_sementara.wav"
+    transkrip_browser = ""
+    
+    with open(file_sementara, "wb") as f:
+        pass
     
     try:
         while True:
             data = await websocket.receive()
             
-            # Jika menerima data suara berupa bytes
             if "bytes" in data and data["bytes"]:
-                data_suara = data["bytes"]
-                with open(file_sementara, "wb") as f:
-                    f.write(data_suara)
-                
-                # Validasi ukuran file > 1KB agar tidak crash pada file kosong/corrupt
-                if os.path.exists(file_sementara) and os.path.getsize(file_sementara) > 1024:
-                    try:
-                        segments, info = await asyncio.to_thread(
-                            model.transcribe, file_sementara, beam_size=5, language="id"
-                        )
-                        teks_pelapor = " ".join([segment.text for segment in segments]).strip()
-                        
-                        if teks_pelapor:
-                            await websocket.send_json({
-                                "tipe": "transkrip",
-                                "pesan": f"Pusat mendengar: {teks_pelapor}"
-                            })
-                    except Exception as e:
-                        print(f"[DEBUG STT]: Menunggu audio lengkap... ({e})")
+                with open(file_sementara, "ab") as f:
+                    f.write(data["bytes"])
 
-            # Jika menerima sinyal teks dari frontend (misal: Selesai Bicara)
             elif "text" in data and data["text"]:
-                pesan_klien = data["text"]
-                if pesan_klien == "SELESAI_LAPORAN":
+                pesan_teks = data["text"]
+                if pesan_teks == "SELESAI_LAPORAN":
                     break
+                try:
+                    obj = json.loads(pesan_teks)
+                    if obj.get("aksi") == "SELESAI_LAPORAN":
+                        transkrip_browser = obj.get("transkrip_browser", "")
+                        break
+                except Exception:
+                    pass
 
     except WebSocketDisconnect:
         print("\n[INFO] Panggilan DITUTUP oleh pelapor.")
         
-    # Proses ekstraksi & TTS setelah panggilan selesai/dihentikan
-    if teks_pelapor:
-        print(f"[INFO] Sedang memproses AI untuk laporan: '{teks_pelapor}'...")
+    if os.path.exists(file_sementara) and os.path.getsize(file_sementara) > 1024:
+        ukuran = os.path.getsize(file_sementara)
+        print(f"[INFO] Sedang memproses analisis laporan ({ukuran} bytes) dengan Llama 3...")
         try:
-            prompt = f"""
-            Ekstrak informasi dari teks berikut ke dalam format JSON saja. Jangan tambahkan kata-kata lain.
-            Teks laporan: '{teks_pelapor}'
-            Format wajib:
-            {{
-                "kategori_darurat": "Kebakaran/Medis/Kecelakaan/Kriminal/Lainnya",
-                "lokasi": "Nama lokasi",
-                "skala_bahaya": "Tinggi/Sedang/Rendah"
-            }}
-            """
-            
-            response = await asyncio.to_thread(
-                ollama.chat, 
-                model='llama3',
-                messages=[{'role': 'user', 'content': prompt}],
-                format='json'
+            data_json = await asyncio.to_thread(
+                proses_laporan_darurat, file_sementara, transkrip_browser
             )
-            hasil_teks = response['message']['content'].strip()
 
+            teks_pelapor = data_json.get("transkrip", "Tidak terdeteksi")
+            kat = data_json.get("kategori_darurat", "Lainnya")
+            lok = data_json.get("lokasi", "Tidak diketahui")
+            skala = data_json.get("skala_bahaya", "Sedang")
+
+            print(f"[RESULT LLAMA 3] Transkrip: {teks_pelapor} | Kategori: {kat} | Lokasi: {lok}")
+
+            # Simpan data ke Database MySQL Laragon
             try:
-                data_json = json.loads(hasil_teks)
-            except json.JSONDecodeError:
-                data_json = {
-                    "kategori_darurat": "Lainnya",
-                    "lokasi": "Tidak diketahui",
-                    "skala_bahaya": "Sedang"
-                }
+                db = mysql.connector.connect(
+                    host="localhost", user="root", password="", database="db_darurat_112",
+                    connection_timeout=5
+                )
+                cursor = db.cursor()
+                waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Simpan ke Database
-            db = mysql.connector.connect(
-                host="localhost", user="root", password="", database="db_darurat_112"
-            )
-            cursor = db.cursor()
-            waktu_sekarang = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                sql = """INSERT INTO laporan_darurat 
+                         (waktu_panggilan, teks_transkrip, kategori_darurat, lokasi, skala_bahaya, status_penanganan, path_file_audio) 
+                         VALUES (%s, %s, %s, %s, %s, %s, %s)"""
+                
+                val = (waktu_sekarang, teks_pelapor, kat, lok, skala, "Menunggu", file_sementara)
+                
+                cursor.execute(sql, val)
+                db.commit()
+                cursor.close()
+                db.close()
+                print("[INFO] BERHASIL! Data hasil analisis telah disimpan ke Database.")
+            except Exception as db_err:
+                print(f"[WARNING DB] Gagal simpan ke MySQL: {db_err}")
 
-            sql = """INSERT INTO laporan_darurat 
-                     (waktu_panggilan, teks_transkrip, kategori_darurat, lokasi, skala_bahaya, status_penanganan, path_file_audio) 
-                     VALUES (%s, %s, %s, %s, %s, %s, %s)"""
-            
-            val = (
-                waktu_sekarang, 
-                teks_pelapor, 
-                data_json.get("kategori_darurat", "Lainnya"), 
-                data_json.get("lokasi", "Tidak diketahui"), 
-                data_json.get("skala_bahaya", "Sedang"), 
-                "Menunggu",
-                file_sementara
-            )
-            
-            cursor.execute(sql, val)
-            db.commit()
-            cursor.close()
-            db.close()
-            print("[INFO] BERHASIL! Data telah disimpan ke Database.")
+            # Buat teks respons konfirmasi & ubah ke audio TTS
+            pesan_tts = f"Laporan {kat} di {lok} telah diterima. Petugas segera menuju ke lokasi."
+            print("[DEBUG] 3. Membuat suara balasan (gTTS)...")
+            audio_b64 = await asyncio.to_thread(teks_ke_base64_audio, pesan_tts)
 
-            # Buat teks konfirmasi & ubah ke audio TTS
-            kat = data_json.get("kategori_darurat", "laporan")
-            lok = data_json.get("lokasi", "lokasi Anda")
-            pesan_tts = f"Laporan {kat} di {lok} telah diterima. Petugas sedang diproses ke lokasi."
-            
-            audio_b64 = teks_ke_base64_audio(pesan_tts)
-
-            # Kirim respons suara balik ke WebSocket
+            # Kirim teks, transkrip, & audio ke WebSocket
             await websocket.send_json({
                 "tipe": "respon_suara",
                 "teks": pesan_tts,
+                "transkrip": teks_pelapor,
                 "audio": audio_b64
             })
+            print("[INFO] Respon suara berhasil dikirim ke pelapor!")
 
         except Exception as e:
-            print(f"[ERROR SYSTEM] Gagal di tahap akhir: {e}")
+            print(f"[ERROR SYSTEM] Gagal memproses laporan: {e}")
 
 
 if __name__ == "__main__": 

@@ -3,93 +3,527 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panggilan Darurat 112</title>
+    <title>Layanan Darurat 112 - Pusat Panggilan</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-dark: #0b0f19;
+            --card-bg: rgba(22, 29, 47, 0.78);
+            --danger-glow: rgba(239, 68, 68, 0.55);
+            --recording-glow: rgba(16, 185, 129, 0.55);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at top, #1e1b4b 0%, #0b0f19 70%);
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .emergency-container {
+            width: 100%;
+            max-width: 440px;
+            background: var(--card-bg);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 28px;
+            padding: 32px 26px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65);
+            position: relative;
+        }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #fca5a5;
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #ef4444;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #ef4444;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+        }
+
+        .mic-wrapper {
+            position: relative;
+            width: 170px;
+            height: 170px;
+            margin: 28px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pulse-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: var(--danger-glow);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .is-recording .pulse-ring {
+            background: var(--recording-glow);
+            animation: pulse-wave 2s infinite cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .is-recording .pulse-ring.delay-1 {
+            animation-delay: 0.7s;
+        }
+
+        @keyframes pulse-wave {
+            0% { transform: scale(0.95); opacity: 0.75; }
+            100% { transform: scale(1.65); opacity: 0; }
+        }
+
+        #btn-rekam {
+            position: relative;
+            z-index: 2;
+            width: 145px;
+            height: 145px;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            background: linear-gradient(145deg, #ef4444, #b91c1c);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 12px 30px var(--danger-glow);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        #btn-rekam:hover {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 16px 35px var(--danger-glow);
+        }
+
+        #btn-rekam:active { transform: scale(0.96); }
+
+        #btn-rekam.recording-active {
+            background: linear-gradient(145deg, #10b981, #047857);
+            box-shadow: 0 12px 30px var(--recording-glow);
+        }
+
+        #btn-rekam i { font-size: 2.6rem; margin-bottom: 4px; }
+        #btn-rekam span { font-size: 0.88rem; font-weight: 700; letter-spacing: 0.3px; line-height: 1.2; }
+
+        .timer-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            opacity: 0.35;
+            transition: opacity 0.3s;
+        }
+
+        .timer-display.active { opacity: 1; color: #34d399; }
+
+        .sound-wave {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            height: 22px;
+            margin-bottom: 14px;
+            visibility: hidden;
+        }
+
+        .sound-wave.active { visibility: visible; }
+
+        .sound-wave span {
+            display: block;
+            width: 4px;
+            height: 6px;
+            background: #34d399;
+            border-radius: 4px;
+            animation: wave 1s infinite ease-in-out;
+        }
+
+        .sound-wave span:nth-child(2) { animation-delay: 0.15s; }
+        .sound-wave span:nth-child(3) { animation-delay: 0.3s; }
+        .sound-wave span:nth-child(4) { animation-delay: 0.45s; }
+        .sound-wave span:nth-child(5) { animation-delay: 0.6s; }
+
+        @keyframes wave {
+            0%, 100% { height: 6px; }
+            50% { height: 22px; }
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 22px;
+        }
+
+        .response-box {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 18px;
+            padding: 18px;
+            text-align: left;
+            transition: border-color 0.3s;
+        }
+
+        .response-box.highlight {
+            border-color: rgba(56, 189, 248, 0.5);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.12);
+        }
+
+        .response-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #94a3b8;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        #hasil-ai {
+            font-size: 0.98rem;
+            font-weight: 500;
+            color: #f1f5f9;
+            margin: 0;
+            line-height: 1.5;
+            min-height: 44px;
+        }
+
+        .tips-footer { margin-top: 20px; font-size: 0.78rem; color: #64748b; }
+    </style>
 </head>
-<body class="bg-dark text-white d-flex align-items-center justify-content-center" style="height: 100vh;">
+<body>
 
-    <div class="text-center">
-        <h1 class="text-danger fw-bold mb-4">🚨 Lapor Darurat 112 🚨</h1>
-        <p class="mb-4">Tekan tombol di bawah dan bicarakan keadaan darurat Anda.</p>
-        
-        <button id="btn-rekam" class="btn btn-danger btn-lg rounded-circle shadow mb-4" style="width: 150px; height: 150px; font-size: 20px;">
-            🎙️<br>Mulai<br>Bicara
-        </button>
+    <div class="emergency-container text-center">
+        <div class="live-badge mb-3">
+            <span class="live-dot"></span>
+            Saluran Siaga 24 Jam
+        </div>
 
-        <p id="status-teks" class="text-warning fw-bold">Status: Menunggu...</p>
-        <div class="card bg-secondary text-white mt-4 mx-auto" style="max-width: 400px;">
-            <div class="card-body">
-                <h5 class="card-title text-light">Transkripsi / Respons Pusat:</h5>
-                <p id="hasil-ai" class="card-text fw-bold fs-5">-</p>
+        <h2 class="fw-extrabold mb-1" style="font-weight: 800; letter-spacing: -0.5px;">
+            Panggilan Darurat <span class="text-danger">112</span>
+        </h2>
+        <p class="text-secondary small mb-3">
+            Sebutkan <strong>kejadian darurat</strong> dan <strong>lokasi lengkap</strong> Anda dengan jelas.
+        </p>
+
+        <div id="mic-container" class="mic-wrapper">
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring delay-1"></div>
+            <button id="btn-rekam" type="button">
+                <i id="ikon-rekam" class="bi bi-mic-fill"></i>
+                <span id="teks-tombol">MULAI<br>LAPOR</span>
+            </button>
+        </div>
+
+        <div id="timer" class="timer-display">00:00</div>
+        <div id="wave-anim" class="sound-wave">
+            <span></span><span></span><span></span><span></span><span></span>
+        </div>
+
+        <div id="status-teks" class="status-pill text-warning">
+            <i class="bi bi-shield-exclamation"></i>
+            <span>Status: Siap Menerima Laporan</span>
+        </div>
+
+        <div id="box-respons" class="response-box">
+            <div class="response-label">
+                <i class="bi bi-headset text-info"></i>
+                Transkripsi Live / Respons Pusat AI
             </div>
+            <p id="hasil-ai" class="text-secondary fst-italic">
+                Tekan tombol merah di atas untuk mulai berbicara dengan asisten darurat...
+            </p>
+            <!-- Elemen Audio Resmi agar tidak diblokir Autoplay Browser -->
+            <audio id="pemutar-suara" controls class="w-100 mt-3 d-none" style="height: 36px;"></audio>
+        </div>
+
+        <div class="tips-footer">
+            <i class="bi bi-cpu-fill me-1"></i> Powered by Local Llama 3 & Auto-Triage 112
         </div>
     </div>
 
     <script>
         let mediaRecorder;
         let socket;
+        let audioStream;
+        let timerInterval;
+        let recognition;
+        let detikRekam = 0;
+        let teksTranskripLive = "";
+
         const btnRekam = document.getElementById("btn-rekam");
+        const ikonRekam = document.getElementById("ikon-rekam");
+        const teksTombol = document.getElementById("teks-tombol");
+        const micContainer = document.getElementById("mic-container");
         const statusTeks = document.getElementById("status-teks");
         const hasilAi = document.getElementById("hasil-ai");
+        const boxRespons = document.getElementById("box-respons");
+        const timerEl = document.getElementById("timer");
+        const waveAnim = document.getElementById("wave-anim");
+        const pemutarSuara = document.getElementById("pemutar-suara");
         
         let isRecording = false;
         let potonganSuara = []; 
 
+        // Web Speech API (Transkripsi Live di Browser)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'id-ID';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onresult = (event) => {
+                let transkripSementara = "";
+                let transkripFinal = "";
+                for (let i = 0; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        transkripFinal += event.results[i][0].transcript + " ";
+                    } else {
+                        transkripSementara += event.results[i][0].transcript;
+                    }
+                }
+                teksTranskripLive = (transkripFinal + transkripSementara).trim();
+                if (teksTranskripLive) {
+                    hasilAi.className = "text-light fw-medium";
+                    hasilAi.innerText = `🎙️ "${teksTranskripLive}"`;
+                }
+            };
+        }
+
+        // Fungsi Cadangan Suara Browser jika MP3 diblokir
+        function bicaraPakaiSuaraBrowser(teks) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const msg = new SpeechSynthesisUtterance(teks);
+                msg.lang = 'id-ID';
+                msg.rate = 1.0;
+                window.speechSynthesis.speak(msg);
+            }
+        }
+
+        async function konversiKeWav(blob) {
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            const channelData = audioBuffer.getChannelData(0);
+            const buffer = new ArrayBuffer(44 + channelData.length * 2);
+            const view = new DataView(buffer);
+
+            function writeString(view, offset, string) {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            }
+
+            const sampleRate = audioBuffer.sampleRate;
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + channelData.length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, channelData.length * 2, true);
+
+            let offset = 44;
+            for (let i = 0; i < channelData.length; i++, offset += 2) {
+                let s = Math.max(-1, Math.min(1, channelData[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+
+            await audioCtx.close();
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function mulaiTimer() {
+            detikRekam = 0;
+            timerEl.innerText = "00:00";
+            timerEl.classList.add("active");
+            waveAnim.classList.add("active");
+
+            timerInterval = setInterval(() => {
+                detikRekam++;
+                const menit = String(Math.floor(detikRekam / 60)).padStart(2, '0');
+                const detik = String(detikRekam % 60).padStart(2, '0');
+                timerEl.innerText = `${menit}:${detik}`;
+            }, 1000);
+        }
+
+        function hentikanTimer() {
+            clearInterval(timerInterval);
+            timerEl.classList.remove("active");
+            waveAnim.classList.remove("active");
+        }
+
+        function setStatus(teks, warnaKelas, ikonKelas) {
+            statusTeks.className = `status-pill ${warnaKelas}`;
+            statusTeks.innerHTML = `<i class="bi ${ikonKelas}"></i> <span>${teks}</span>`;
+        }
+
         btnRekam.addEventListener("click", async () => {
+            // Pancing izin audio browser tepat saat user klik tombol
+            pemutarSuara.classList.add("d-none");
+            pemutarSuara.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+            pemutarSuara.play().catch(() => {});
+
             if (!isRecording) {
+                setStatus("Menghubungkan ke saluran darurat...", "text-info", "bi-arrow-repeat");
+
                 socket = new WebSocket("ws://127.0.0.1:8000/ws/darurat");
                 
                 socket.onopen = async () => {
-                    statusTeks.innerText = "Status: Terhubung! Silakan bicara...";
-                    statusTeks.className = "text-success fw-bold";
-                    btnRekam.classList.replace("btn-danger", "btn-success");
-                    btnRekam.innerHTML = "⏹️<br>Hentikan<br>Laporan";
-                    hasilAi.innerText = "Mendengarkan...";
-                    
-                    isRecording = true;
-                    potonganSuara = []; 
+                    try {
+                        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        mediaRecorder = new MediaRecorder(audioStream);
+                        potonganSuara = [];
+                        teksTranskripLive = "";
+                        isRecording = true;
 
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    
-                    mediaRecorder.ondataavailable = event => {
-                        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-                            potonganSuara.push(event.data);
-                            let fileUtuh = new Blob(potonganSuara, { type: 'audio/webm' });
-                            socket.send(fileUtuh);
+                        micContainer.classList.add("is-recording");
+                        btnRekam.classList.add("recording-active");
+                        ikonRekam.className = "bi bi-stop-fill";
+                        teksTombol.innerHTML = "HENTIKAN<br>LAPORAN";
+                        
+                        setStatus("Terhubung! Silakan bicara sekarang...", "text-success", "bi-broadcast");
+                        boxRespons.classList.remove("highlight");
+                        hasilAi.className = "text-light";
+                        hasilAi.innerText = "Mendengarkan suara Anda...";
+                        mulaiTimer();
+
+                        if (recognition) {
+                            try { recognition.start(); } catch (e) {}
                         }
-                    };
-                    mediaRecorder.start(1000); 
+
+                        mediaRecorder.ondataavailable = event => {
+                            if (event.data.size > 0) {
+                                potonganSuara.push(event.data);
+                            }
+                        };
+
+                        mediaRecorder.onstop = async () => {
+                            if (audioStream) {
+                                audioStream.getTracks().forEach(track => track.stop());
+                            }
+                            // Beri jeda 300ms agar SpeechRecognition menyelesaikan kata terakhir
+                            await new Promise(r => setTimeout(r, 300));
+                            if (recognition) {
+                                try { recognition.stop(); } catch (e) {}
+                            }
+
+                            if (socket && socket.readyState === WebSocket.OPEN) {
+                                try {
+                                    let rawBlob = new Blob(potonganSuara, { type: 'audio/webm' });
+                                    let wavBlob = await konversiKeWav(rawBlob);
+                                    socket.send(wavBlob);
+                                    socket.send(JSON.stringify({
+                                        aksi: "SELESAI_LAPORAN",
+                                        transkrip_browser: teksTranskripLive
+                                    }));
+                                } catch (e) {
+                                    console.error("Gagal konversi WAV:", e);
+                                }
+                            }
+                        };
+
+                        mediaRecorder.start();
+
+                    } catch (err) {
+                        setStatus("Gagal mengakses mikrofon browser!", "text-danger", "bi-mic-mute-fill");
+                        console.error(err);
+                    }
                 };
 
                 socket.onmessage = (event) => {
                     const data = JSON.parse(event.data);
 
-                    if (data.tipe === "transkrip") {
-                        hasilAi.innerText = data.pesan;
-                    } 
-                    else if (data.tipe === "respon_suara") {
-                        statusTeks.innerText = "Status: Jawaban Petugas Ditampilkan.";
-                        statusTeks.className = "text-info fw-bold";
-                        hasilAi.innerText = data.teks;
+                    if (data.tipe === "respon_suara") {
+                        setStatus("Laporan Diterima & Diproses", "text-info", "bi-check-circle-fill");
+                        boxRespons.classList.add("highlight");
+                        hasilAi.className = "text-info fw-semibold";
+                        hasilAi.innerText = `🗣️ "${data.teks}"\n\n📝 Transkrip Anda: "${data.transkrip}"`;
 
-                        // Putar audio TTS otomatis
-                        let audio = new Audio("data:audio/mp3;base64," + data.audio);
-                        audio.play();
+                        // Putar audio MP3 dari server, jika gagal/diblokir langsung pakai suara browser
+                        if (data.audio) {
+                            pemutarSuara.src = "data:audio/mp3;base64," + data.audio;
+                            pemutarSuara.classList.remove("d-none");
+                            pemutarSuara.play().catch(err => {
+                                console.warn("Autoplay MP3 diblokir, memutar suara sintetis browser:", err);
+                                bicaraPakaiSuaraBrowser(data.teks);
+                            });
+                        } else {
+                            bicaraPakaiSuaraBrowser(data.teks);
+                        }
                     }
                 };
 
+                socket.onerror = () => {
+                    setStatus("Gagal terhubung ke server 112!", "text-danger", "bi-wifi-off");
+                    hentikanTimer();
+                };
+
             } else {
-                mediaRecorder.stop();
-                statusTeks.innerText = "Status: Memproses analisis laporan...";
-                statusTeks.className = "text-warning fw-bold";
-                btnRekam.classList.replace("btn-success", "btn-danger");
-                btnRekam.innerHTML = "🎙️<br>Mulai<br>Bicara";
-                
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send("SELESAI_LAPORAN");
-                }
                 isRecording = false;
+                hentikanTimer();
+
+                micContainer.classList.remove("is-recording");
+                btnRekam.classList.remove("recording-active");
+                ikonRekam.className = "bi bi-mic-fill";
+                teksTombol.innerHTML = "MULAI<br>LAPOR";
+
+                setStatus("Menganalisis laporan dengan Llama 3...", "text-warning", "bi-cpu-fill");
+
+                if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                    mediaRecorder.stop();
+                }
             }
         });
     </script>
