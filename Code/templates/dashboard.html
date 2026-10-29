@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Darurat 112</title>
+    <meta http-equiv="refresh" content="5">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <h2 class="mb-4 text-danger fw-bold"> Pusat Pantauan Darurat 112</h2>
+        
+        <div class="card shadow">
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Waktu Panggilan</th>
+                            <th>Kategori</th>
+                            <th>Lokasi</th>
+                            <th>Skala Bahaya</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for laporan in data_laporan %}
+                        <tr>
+                            <td>{{ laporan.id_laporan }}</td>
+                            <td>{{ laporan.waktu_panggilan }}</td>
+                            <td class="fw-bold">{{ laporan.kategori_darurat }}</td>
+                            <td>{{ laporan.lokasi }}</td>
+                            <td>
+                                {% if laporan.skala_bahaya == 'Tinggi' %}
+                                    <span class="badge bg-danger">Tinggi</span>
+                                {% elif laporan.skala_bahaya == 'Sedang' %}
+                                    <span class="badge bg-warning text-dark">Sedang</span>
+                                {% else %}
+                                    <span class="badge bg-success">Rendah</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge bg-secondary">{{ laporan.status_penanganan }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

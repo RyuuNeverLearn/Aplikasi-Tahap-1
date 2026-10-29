@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panggilan Darurat 112</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-dark text-white d-flex align-items-center justify-content-center" style="height: 100vh;">
+
+    <div class="text-center">
+        <h1 class="text-danger fw-bold mb-4">🚨 Lapor Darurat 112 🚨</h1>
+        <p class="mb-4">Tekan tombol di bawah dan bicarakan keadaan darurat Anda.</p>
+        
+        <button id="btn-rekam" class="btn btn-danger btn-lg rounded-circle shadow mb-4" style="width: 150px; height: 150px; font-size: 20px;">
+            🎙️<br>Mulai<br>Bicara
+        </button>
+
+        <p id="status-teks" class="text-warning fw-bold">Status: Menunggu...</p>
+        <div class="card bg-secondary text-white mt-4 mx-auto" style="max-width: 400px;">
+            <div class="card-body">
+                <h5 class="card-title text-light">Transkripsi / Respons Pusat:</h5>
+                <p id="hasil-ai" class="card-text fw-bold fs-5">-</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let socket;
+        const btnRekam = document.getElementById("btn-rekam");
+        const statusTeks = document.getElementById("status-teks");
+        const hasilAi = document.getElementById("hasil-ai");
+        
+        let isRecording = false;
+        let potonganSuara = []; 
+
+        btnRekam.addEventListener("click", async () => {
+            if (!isRecording) {
+                socket = new WebSocket("ws://127.0.0.1:8000/ws/darurat");
+                
+                socket.onopen = async () => {
+                    statusTeks.innerText = "Status: Terhubung! Silakan bicara...";
+                    statusTeks.className = "text-success fw-bold";
+                    btnRekam.classList.replace("btn-danger", "btn-success");
+                    btnRekam.innerHTML = "⏹️<br>Hentikan<br>Laporan";
+                    hasilAi.innerText = "Mendengarkan...";
+                    
+                    isRecording = true;
+                    potonganSuara = []; 
+
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+                            potonganSuara.push(event.data);
+                            let fileUtuh = new Blob(potonganSuara, { type: 'audio/webm' });
+                            socket.send(fileUtuh);
+                        }
+                    };
+                    mediaRecorder.start(1000); 
+                };
+
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.tipe === "transkrip") {
+                        hasilAi.innerText = data.pesan;
+                    } 
+                    else if (data.tipe === "respon_suara") {
+                        statusTeks.innerText = "Status: Jawaban Petugas Ditampilkan.";
+                        statusTeks.className = "text-info fw-bold";
+                        hasilAi.innerText = data.teks;
+
+                        // Putar audio TTS otomatis
+                        let audio = new Audio("data:audio/mp3;base64," + data.audio);
+                        audio.play();
+                    }
+                };
+
+            } else {
+                mediaRecorder.stop();
+                statusTeks.innerText = "Status: Memproses analisis laporan...";
+                statusTeks.className = "text-warning fw-bold";
+                btnRekam.classList.replace("btn-success", "btn-danger");
+                btnRekam.innerHTML = "🎙️<br>Mulai<br>Bicara";
+                
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send("SELESAI_LAPORAN");
+                }
+                isRecording = false;
+            }
+        });
+    </script>
+</body>
+</html>
